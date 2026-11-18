@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Book;
 use App\Models\BookRequest;
+use App\Models\BookReview;
 use App\Models\ContactMessage;
 use App\Models\Loan;
 use App\Models\Member;
@@ -39,6 +40,7 @@ class AdminController extends Controller
                 ->get(),
             'merchandiseRequests' => MembershipSubscription::with('user')->where('merchandise_status', 'pending')->latest()->get(),
             'bookRequests' => BookRequest::with('user')->latest()->take(30)->get(),
+            'bookReviews' => BookReview::with(['book', 'user'])->where('status', 'pending')->latest()->take(50)->get(),
             'reservations' => Reservation::with(['user', 'book'])
                 ->whereIn('status', ['pending', 'ready'])
                 ->orderByDesc('priority')
@@ -319,6 +321,17 @@ class AdminController extends Controller
         $bookRequest->update($data);
 
         return back()->with('success', 'Status usulan buku berhasil diperbarui.');
+    }
+
+    public function approveBookReview(BookReview $bookReview): RedirectResponse
+    {
+        if ($bookReview->status !== 'pending') {
+            return back()->withErrors(['review' => 'Ulasan ini sudah dimoderasi.']);
+        }
+
+        $bookReview->update(['status' => 'approved']);
+
+        return back()->with('success', 'Ulasan berhasil disetujui dan ditampilkan.');
     }
 
     public function updateReservation(Request $request, Reservation $reservation, ReservationQueue $reservationQueue): RedirectResponse

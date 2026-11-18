@@ -39,6 +39,11 @@ class User extends Authenticatable
         return $this->hasMany(Reservation::class);
     }
 
+    public function bookReviews(): HasMany
+    {
+        return $this->hasMany(BookReview::class);
+    }
+
     public function currentMembership(): ?MembershipSubscription
     {
         return $this->memberships()

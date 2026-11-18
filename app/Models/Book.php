@@ -38,6 +38,11 @@ class Book extends Model
         return $this->hasMany(Loan::class);
     }
 
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(BookReview::class);
+    }
+
     public function availableCopies(): int
     {
         $activeLoans = $this->active_loans_count

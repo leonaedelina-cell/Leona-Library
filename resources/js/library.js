@@ -31,7 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const closeModal = (modal) => {
         if (!modal) return;
         modal.hidden = true;
-        if (!document.querySelector('.modal-backdrop:not([hidden]), .reader-backdrop:not([hidden])')) document.body.style.overflow = '';
+        if (!document.querySelector('.modal-backdrop:not([hidden])')) document.body.style.overflow = '';
     };
 
     document.querySelectorAll('[data-open-modal]').forEach((button) => {
@@ -48,7 +48,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') {
             document.querySelectorAll('.modal-backdrop:not([hidden])').forEach(closeModal);
-            closeModal(document.querySelector('.reader-backdrop:not([hidden])'));
         }
     });
 
@@ -143,13 +142,6 @@ document.addEventListener('DOMContentLoaded', () => {
             form.elements.namedItem('password').placeholder = '';
         },
     });
-
-    const reader = document.getElementById('reader');
-    document.querySelector('[data-reader]')?.addEventListener('click', () => {
-        reader.hidden = false;
-        document.body.style.overflow = 'hidden';
-    });
-    document.querySelector('[data-close-reader]')?.addEventListener('click', () => closeModal(reader));
 
     const scannerButton = document.querySelector('[data-start-scanner]');
     const scannerPanel = document.querySelector('[data-scanner-panel]');

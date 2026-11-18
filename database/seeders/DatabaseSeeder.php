@@ -5,9 +5,12 @@ namespace Database\Seeders;
 use App\Models\Book;
 use App\Models\Loan;
 use App\Models\Member;
+use App\Models\MembershipSubscription;
 use App\Models\User;
-use Illuminate\Support\Facades\App;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Storage;
 
 class DatabaseSeeder extends Seeder
 {
@@ -29,6 +32,37 @@ class DatabaseSeeder extends Seeder
         }
 
         if (App::environment(['local', 'testing'])) {
+            $demoEbookAsset = database_path('seeders/assets/ruang-baca-demo.pdf');
+
+            if (! File::exists($demoEbookAsset)) {
+                throw new \RuntimeException('The demo e-book PDF asset is missing.');
+            }
+
+            $demoEbookPath = 'ebooks/ruang-baca-demo.pdf';
+            if (! Storage::disk('local')->put($demoEbookPath, File::get($demoEbookAsset))) {
+                throw new \RuntimeException('The demo e-book PDF could not be stored on the private disk.');
+            }
+
+            Book::updateOrCreate(
+                ['isbn' => 'DEMO-READER-2026'],
+                [
+                    'title' => 'Senja di Peron Terakhir',
+                    'author' => 'Ruang Baca Demo',
+                    'publisher' => 'Ruang Baca',
+                    'genre' => 'Fiksi',
+                    'language' => 'Indonesia',
+                    'published_year' => 2026,
+                    'synopsis' => 'Cerita pendek orisinal untuk menguji tampilan dan kontrol reader e-book.',
+                    'cover' => 'https://images.unsplash.com/photo-1507842217343-583bb7270b66?auto=format&fit=crop&w=700&q=85',
+                    'shelf' => 'E-book demo',
+                    'dewey_code' => '813.8',
+                    'stock' => 0,
+                    'ebook' => true,
+                    'ebook_path' => $demoEbookPath,
+                    'popular' => false,
+                ],
+            );
+
             $demoUser = User::firstOrCreate(
                 ['email' => 'alya@ruangbaca.id'],
                 ['name' => 'Alya Putri', 'password' => 'RuangBaca2026!', 'role' => 'member'],
@@ -43,6 +77,22 @@ class DatabaseSeeder extends Seeder
                     'member_number' => 'LIB-2024-0042',
                     'status' => 'active',
                     'joined_at' => '2024-05-01',
+                ],
+            );
+
+            MembershipSubscription::updateOrCreate(
+                ['payment_order_id' => 'DEMO-READER-PREMIUM'],
+                [
+                    'user_id' => $demoUser->id,
+                    'plan' => 'premium',
+                    'billing_period' => 'monthly',
+                    'amount' => config('membership.plans.premium.prices.monthly'),
+                    'status' => 'active',
+                    'starts_at' => today(),
+                    'ends_at' => today()->addMonthNoOverflow(),
+                    'merchandise_status' => 'not_eligible',
+                    'payment_status' => 'paid',
+                    'payment_paid_at' => now(),
                 ],
             );
         }

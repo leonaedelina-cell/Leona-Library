@@ -3,12 +3,14 @@
 namespace Tests\Feature;
 
 use App\Models\Book;
+use App\Models\BookReview;
 use App\Models\ContactMessage;
 use App\Models\Loan;
 use App\Models\Member;
 use App\Models\MembershipSubscription;
 use App\Models\Reservation;
 use App\Models\User;
+use Database\Seeders\DatabaseSeeder;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as ClientRequest;
@@ -117,6 +119,200 @@ class LibraryTest extends TestCase
             ->assertSessionHasErrors('borrow');
 
         $this->assertSame(3, Loan::count());
+    }
+
+    public function test_member_can_submit_one_pending_review_for_a_returned_ebook_loan(): void
+    {
+        $book = $this->createBook(['ebook' => true, 'ebook_path' => 'ebooks/laut-bercerita.pdf']);
+        $member = $this->createActiveMember();
+        $loan = $this->createLoan($member, $book, 'returned');
+
+        $this->actingAs($member->user)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('kesanmu.')
+            ->assertSee('Bagian mana yang paling lama tinggal di pikiranmu?');
+
+        $this->post(route('book-reviews.store', $loan), [
+            'mood' => 'terharu',
+            'content' => 'Kisah ini meninggalkan rasa hangat dan terus teringat setelah halaman terakhir.',
+            'is_spoiler' => '1',
+            'status' => 'approved',
+        ])->assertRedirect(route('dashboard'))
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('book_reviews', [
+            'loan_id' => $loan->id,
+            'user_id' => $member->user->id,
+            'book_id' => $book->id,
+            'mood' => 'terharu',
+            'is_spoiler' => true,
+            'status' => 'pending',
+        ]);
+
+        $this->post(route('book-reviews.store', $loan), [
+            'mood' => 'hangat',
+            'content' => 'Ada banyak perasaan yang masih ingin saya ceritakan tentang buku ini.',
+        ])->assertSessionHasErrors('review');
+
+        $this->assertDatabaseCount('book_reviews', 1);
+    }
+
+    public function test_member_cannot_review_an_active_loan(): void
+    {
+        $book = $this->createBook(['ebook' => true, 'ebook_path' => 'ebooks/laut-bercerita.pdf']);
+        $member = $this->createActiveMember();
+        $loan = $this->createLoan($member, $book, 'active');
+
+        $this->actingAs($member->user)
+            ->from(route('dashboard'))
+            ->post(route('book-reviews.store', $loan), [
+                'mood' => 'hangat',
+                'content' => 'Ada banyak perasaan yang ingin saya ceritakan tentang buku ini.',
+            ])
+            ->assertRedirect(route('dashboard'))
+            ->assertSessionHasErrors([
+                'review' => 'Kesan dan pesan hanya dapat dikirim setelah peminjaman selesai dibaca.',
+            ]);
+
+        $this->assertDatabaseCount('book_reviews', 0);
+    }
+
+    public function test_member_cannot_review_a_returned_physical_loan(): void
+    {
+        $book = $this->createBook();
+        $member = $this->createActiveMember();
+        $loan = $this->createLoan($member, $book, 'returned');
+
+        $this->actingAs($member->user)
+            ->from(route('dashboard'))
+            ->post(route('book-reviews.store', $loan), [
+                'mood' => 'hangat',
+                'content' => 'Ada banyak perasaan yang ingin saya ceritakan tentang buku ini.',
+            ])
+            ->assertRedirect(route('dashboard'))
+            ->assertSessionHasErrors([
+                'review' => 'Kesan dan pesan hanya tersedia untuk e-book yang telah selesai dibaca.',
+            ]);
+
+        $this->assertDatabaseCount('book_reviews', 0);
+    }
+
+    public function test_member_cannot_submit_a_review_for_another_members_loan(): void
+    {
+        $book = $this->createBook(['ebook' => true, 'ebook_path' => 'ebooks/laut-bercerita.pdf']);
+        $owner = $this->createActiveMember();
+        $loan = $this->createLoan($owner, $book, 'returned');
+        $otherUser = User::create([
+            'name' => 'Pembaca Lain',
+            'email' => 'pembaca-lain@example.com',
+            'password' => 'SecretPassword2026',
+            'role' => 'member',
+        ]);
+        Member::create([
+            'user_id' => $otherUser->id,
+            'member_number' => 'LIB-2024-0043',
+            'name' => $otherUser->name,
+            'email' => $otherUser->email,
+            'status' => 'active',
+            'joined_at' => '2024-05-01',
+        ]);
+
+        $this->actingAs($otherUser)
+            ->post(route('book-reviews.store', $loan), [
+                'mood' => 'hangat',
+                'content' => 'Ada banyak perasaan yang ingin saya ceritakan tentang buku ini.',
+            ])
+            ->assertForbidden();
+
+        $this->assertDatabaseCount('book_reviews', 0);
+    }
+
+    public function test_member_cannot_submit_a_review_containing_profanity(): void
+    {
+        $book = $this->createBook(['ebook' => true, 'ebook_path' => 'ebooks/laut-bercerita.pdf']);
+        $member = $this->createActiveMember();
+        $loan = $this->createLoan($member, $book, 'returned');
+
+        $this->actingAs($member->user)
+            ->from(route('dashboard'))
+            ->post(route('book-reviews.store', $loan), [
+                'mood' => 'hangat',
+                'content' => 'Buku ini goblok dan penuh cerita yang tidak menarik.',
+            ])
+            ->assertRedirect(route('dashboard'))
+            ->assertSessionHasErrors([
+                'content' => 'Gunakan bahasa yang sopan agar ulasan dapat dikirim.',
+            ]);
+
+        $this->assertDatabaseCount('book_reviews', 0);
+    }
+
+    public function test_admin_can_approve_spoiler_review_and_only_approved_reviews_are_public(): void
+    {
+        $book = $this->createBook(['ebook' => true, 'ebook_path' => 'ebooks/laut-bercerita.pdf']);
+        $member = $this->createActiveMember();
+        $loan = $this->createLoan($member, $book, 'returned');
+        $review = BookReview::create([
+            'loan_id' => $loan->id,
+            'user_id' => $member->user->id,
+            'book_id' => $book->id,
+            'mood' => 'terharu',
+            'content' => "Kisah ini tinggal di pikiranku. <script>alert('x')</script>",
+            'is_spoiler' => true,
+            'status' => 'pending',
+        ]);
+
+        $this->get(route('books.show', $book))
+            ->assertOk()
+            ->assertDontSee('Kisah ini tinggal di pikiranku.');
+
+        $this->actingAs($this->createAdmin());
+
+        $this->get(route('admin.index'))
+            ->assertOk()
+            ->assertSee('MODERASI PEMBACA')
+            ->assertSee('Kisah ini tinggal di pikiranku.');
+
+        $this->post(route('admin.book-reviews.approve', $review))
+            ->assertRedirect(route('admin.index'))
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('book_reviews', [
+            'id' => $review->id,
+            'status' => 'approved',
+        ]);
+
+        $this->get(route('books.show', $book))
+            ->assertOk()
+            ->assertSee('Spoiler alert · buka jika siap')
+            ->assertSee('Kisah ini tinggal di pikiranku.')
+            ->assertSee('&lt;script&gt;', false)
+            ->assertDontSee("<script>alert('x')</script>", false);
+    }
+
+    public function test_member_cannot_approve_pending_reviews(): void
+    {
+        $book = $this->createBook(['ebook' => true, 'ebook_path' => 'ebooks/laut-bercerita.pdf']);
+        $member = $this->createActiveMember();
+        $loan = $this->createLoan($member, $book, 'returned');
+        $review = BookReview::create([
+            'loan_id' => $loan->id,
+            'user_id' => $member->user->id,
+            'book_id' => $book->id,
+            'mood' => 'hangat',
+            'content' => 'Ada banyak perasaan yang ingin saya ceritakan tentang buku ini.',
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($member->user)
+            ->post(route('admin.book-reviews.approve', $review))
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('book_reviews', [
+            'id' => $review->id,
+            'status' => 'pending',
+        ]);
     }
 
     public function test_new_members_are_active_immediately_and_blocked_members_cannot_borrow(): void
@@ -415,23 +611,59 @@ class LibraryTest extends TestCase
         Storage::disk('local')->put('ebooks/sample.pdf', '%PDF-1.4 test document');
         $book = $this->createBook(['ebook_path' => 'ebooks/sample.pdf']);
 
-        $this->get(route('books.ebook', $book))->assertRedirect(route('login'));
+        $this->get(route('books.ebook.file', $book))->assertRedirect(route('login'));
 
         $member = $this->createActiveMember();
         $this->actingAs($member->user)
-            ->get(route('books.ebook', $book))
+            ->get(route('books.ebook.file', $book))
             ->assertForbidden();
 
         $this->createMembership($member->user, 'premium');
         $this->actingAs($member->user->fresh())
             ->get(route('books.ebook', $book))
             ->assertOk()
+            ->assertViewIs('ebook.reader')
+            ->assertSee('data-pdf-reader', false)
+            ->assertSee('data-reader-next', false)
+            ->assertSee('data-reader-theme="dark"', false)
+            ->assertSee(route('books.ebook.file', $book), false)
+            ->assertDontSee('<iframe', false)
+            ->assertDontSee('download', false);
+
+        $this->get(route('books.ebook.file', $book))
+            ->assertOk()
             ->assertHeader('content-type', 'application/pdf')
-            ->assertHeader('content-disposition', 'inline; filename="ruang-baca-'.$book->id.'.pdf"');
+            ->assertHeader('content-disposition', 'inline; filename="ruang-baca-'.$book->id.'.pdf"')
+            ->assertHeaderContains('cache-control', 'private')
+            ->assertHeaderContains('cache-control', 'no-store');
 
         $member->update(['status' => 'blocked']);
         $this->actingAs($member->user->fresh());
-        $this->get(route('books.ebook', $book))->assertForbidden();
+        $this->get(route('books.ebook.file', $book))->assertForbidden();
+    }
+
+    public function test_demo_ebook_is_seeded_on_private_storage_for_the_premium_demo_member(): void
+    {
+        Storage::fake('local');
+
+        $this->seed(DatabaseSeeder::class);
+
+        $book = Book::where('isbn', 'DEMO-READER-2026')->firstOrFail();
+        $demoUser = User::where('email', 'alya@ruangbaca.id')->firstOrFail();
+
+        $this->assertDatabaseHas('books', [
+            'id' => $book->id,
+            'ebook' => true,
+            'ebook_path' => 'ebooks/ruang-baca-demo.pdf',
+        ]);
+        Storage::disk('local')->assertExists($book->ebook_path);
+        $this->assertSame('premium', $demoUser->currentMembership()?->plan);
+
+        $this->actingAs($demoUser)
+            ->get(route('books.ebook', $book))
+            ->assertOk()
+            ->assertSee($book->title)
+            ->assertSee($demoUser->email);
     }
 
     public function test_member_can_start_midtrans_checkout_but_only_paid_notification_activates_membership(): void
@@ -946,6 +1178,18 @@ class LibraryTest extends TestCase
             'ebook' => false,
             'popular' => true,
         ], $attributes));
+    }
+
+    private function createLoan(Member $member, Book $book, string $status): Loan
+    {
+        return Loan::create([
+            'book_id' => $book->id,
+            'member_name' => $member->name,
+            'member_number' => $member->member_number,
+            'due_at' => today(),
+            'status' => $status,
+            'method' => 'pickup',
+        ]);
     }
 
     /**

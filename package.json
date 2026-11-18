@@ -7,6 +7,7 @@
         "dev": "vite"
     },
     "dependencies": {
+        "pdfjs-dist": "^6.5.438",
         "qrcode": "^1.5.4"
     },
     "devDependencies": {

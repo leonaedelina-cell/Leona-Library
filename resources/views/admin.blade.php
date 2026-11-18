@@ -227,6 +227,27 @@
             </tbody>
         </table></div>
     </section>
+
+    <section class="admin-panel">
+        <div class="admin-panel-head"><div><span class="eyebrow">MODERASI PEMBACA</span><h2>Kesan dan <em>pesan.</em></h2></div><span>{{ $bookReviews->count() }} menunggu</span></div>
+        <div class="table-wrap"><table class="admin-table">
+            <thead><tr><th>PEMBACA</th><th>BUKU</th><th>SUASANA HATI</th><th>ULASAN</th><th>STATUS</th><th>AKSI</th></tr></thead>
+            <tbody>
+                @forelse ($bookReviews as $review)
+                    <tr>
+                        <td>{{ $review->user->name }}</td>
+                        <td>{{ $review->book->title }}</td>
+                        <td>{{ ucfirst($review->mood) }}{{ $review->is_spoiler ? ' · Spoiler' : '' }}</td>
+                        <td>{{ $review->content }}</td>
+                        <td><span class="status-pill pending">Menunggu</span></td>
+                        <td><form action="{{ route('admin.book-reviews.approve', $review) }}" method="POST">@csrf<button class="table-link" type="submit">Setujui</button></form></td>
+                    </tr>
+                @empty
+                    <tr><td colspan="6" class="table-empty">Belum ada ulasan yang menunggu moderasi.</td></tr>
+                @endforelse
+            </tbody>
+        </table></div>
+    </section>
 </section>
 
 <div class="modal-backdrop" id="book-modal" hidden>

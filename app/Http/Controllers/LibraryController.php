@@ -53,7 +53,14 @@ class LibraryController extends Controller
     {
         $book->loadCount(['loans as active_loans_count' => fn ($query) => $query->where('status', 'active')]);
 
-        return view('book', ['book' => $book]);
+        return view('book', [
+            'book' => $book,
+            'approvedReviews' => $book->reviews()
+                ->with('user')
+                ->where('status', 'approved')
+                ->latest()
+                ->get(),
+        ]);
     }
 
     public function borrow(Request $request, Book $book, ReservationQueue $reservationQueue): RedirectResponse
@@ -159,7 +166,7 @@ class LibraryController extends Controller
                 ->latest()
                 ->first(),
             'loans' => $member
-                ? Loan::with('book')->where('member_number', $member->member_number)->latest()->get()
+                ? Loan::with(['book', 'review'])->where('member_number', $member->member_number)->latest()->get()
                 : collect(),
             'wishlist' => Book::whereIn('id', $request->session()->get('wishlist', []))->get(),
             'reservations' => $user->reservations()->with('book')->whereIn('status', ['pending', 'ready'])->latest()->get(),

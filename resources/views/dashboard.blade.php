@@ -68,5 +68,43 @@
     <div class="dashboard-section-head history-heading"><div><span class="eyebrow">JEJAK CERITA</span><h2>Riwayat <em>pinjaman.</em></h2></div></div>
     @php($pastLoans = $loans->where('status', 'returned'))
     @if ($pastLoans->isNotEmpty())<div class="history-list">@foreach ($pastLoans as $loan)<div><span>✓</span><b>{{ $loan->book->title }}</b><span>{{ $loan->created_at->translatedFormat('d M Y') }}</span><small>Selesai dibaca</small></div>@endforeach</div>@else<p class="muted-copy">Cerita yang telah kamu kembalikan akan muncul di sini.</p>@endif
+    @php($reviewableLoans = $pastLoans->filter(fn ($loan) => filled($loan->book->ebook_path)))
+    @if ($reviewableLoans->isNotEmpty())
+        <div class="dashboard-section-head history-heading"><div><span class="eyebrow">SETELAH MEMBACA E-BOOK</span><h2>Bagikan <em>kesanmu.</em></h2></div></div>
+        <div class="book-review-list">
+            @foreach ($reviewableLoans as $loan)
+                <article class="book-review-card">
+                    <div class="book-review-heading"><div><b>{{ $loan->book->title }}</b><span>{{ $loan->book->author }}</span></div><a href="{{ route('books.show', $loan->book) }}">Lihat buku ↗</a></div>
+                    @if ($loan->review)
+                        @if ($loan->review->status === 'approved')
+                            <p class="review-approved-note">✦ Ulasanmu sudah disetujui dan tampil di halaman buku.</p>
+                        @else
+                            <p class="review-pending-note">✦ Ulasanmu berstatus menunggu persetujuan pengelola.</p>
+                        @endif
+                    @else
+                        <form action="{{ route('book-reviews.store', $loan) }}" method="POST" class="book-review-form">
+                            @csrf
+                            <fieldset>
+                                <legend>Tag suasana hati yang paling terasa</legend>
+                                <div class="mood-tags">
+                                    <label><input type="radio" name="mood" value="terharu" required><span>🥹 Terharu</span></label>
+                                    <label><input type="radio" name="mood" value="hangat"><span>🌿 Hangat</span></label>
+                                    <label><input type="radio" name="mood" value="terkejut"><span>😮 Tak menyangka</span></label>
+                                    <label><input type="radio" name="mood" value="terinspirasi"><span>✨ Terinspirasi</span></label>
+                                    <label><input type="radio" name="mood" value="merenung"><span>💭 Merenung</span></label>
+                                </div>
+                            </fieldset>
+                            <label class="review-content-label" for="review-content-{{ $loan->id }}">Kesan dan pesan
+                                <textarea id="review-content-{{ $loan->id }}" name="content" rows="4" minlength="20" maxlength="2000" required placeholder="Bagian mana yang paling lama tinggal di pikiranmu? Ceritakan kesan dan pesanmu...">{{ old('content') }}</textarea>
+                                <small>Kalau boleh membawa satu perasaan dari cerita ini, apa yang ingin kamu simpan?</small>
+                            </label>
+                            <label class="spoiler-toggle"><input type="checkbox" name="is_spoiler" value="1"><span><b>Spoiler alert</b><small>Tandai jika ulasanmu membocorkan bagian penting cerita.</small></span></label>
+                            <button class="button button-dark" type="submit">Kirim untuk ditinjau ↗</button>
+                        </form>
+                    @endif
+                </article>
+            @endforeach
+        </div>
+    @endif
 </section>
 @endsection

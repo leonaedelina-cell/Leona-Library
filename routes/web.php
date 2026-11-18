@@ -3,6 +3,7 @@
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BookRequestController;
+use App\Http\Controllers\BookReviewController;
 use App\Http\Controllers\EbookController;
 use App\Http\Controllers\LibraryController;
 use App\Http\Controllers\MembershipController;
@@ -15,6 +16,8 @@ Route::get('/', [LibraryController::class, 'home'])->name('home');
 Route::get('/katalog', [LibraryController::class, 'catalog'])->name('catalog');
 Route::get('/buku/{book}', [LibraryController::class, 'show'])->name('books.show');
 Route::get('/buku/{book}/reader', [EbookController::class, 'show'])->middleware('auth')->name('books.ebook');
+Route::get('/buku/{book}/reader/content', [EbookController::class, 'file'])->middleware('auth')->name('books.ebook.file');
+Route::post('/peminjaman/{loan}/kesan-pesan', [BookReviewController::class, 'store'])->middleware(['auth', 'throttle:5,1'])->name('book-reviews.store');
 Route::get('/layanan', [LibraryController::class, 'services'])->name('services');
 Route::get('/membership', [MembershipController::class, 'index'])->name('membership.index');
 Route::post('/payments/midtrans/notification', MidtransWebhookController::class)->name('payments.midtrans.notification');
@@ -59,6 +62,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/peminjaman/{loan}/kembali', [AdminController::class, 'returnBook'])->name('loans.return');
         Route::post('/membership/{membership}/merchandise', [AdminController::class, 'fulfillMembershipMerchandise'])->name('memberships.merchandise');
         Route::put('/usulan-buku/{bookRequest}', [AdminController::class, 'updateBookRequest'])->name('book-requests.update');
+        Route::post('/ulasan/{bookReview}/setujui', [AdminController::class, 'approveBookReview'])->name('book-reviews.approve');
         Route::put('/reservasi/{reservation}', [AdminController::class, 'updateReservation'])->name('reservations.update');
     });
 });
