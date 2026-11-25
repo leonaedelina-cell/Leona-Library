@@ -9,9 +9,10 @@
         <select name="language" aria-label="Filter bahasa"><option value="">Semua bahasa</option>@foreach ($languages as $language)<option value="{{ $language }}" @selected(request('language') === $language)>{{ $language }}</option>@endforeach</select>
         <input class="year-filter" type="number" name="year" value="{{ request('year') }}" min="1000" max="2100" placeholder="Tahun" aria-label="Tahun terbit">
         <select name="availability" aria-label="Filter ketersediaan"><option value="">Semua status</option><option value="available" @selected(request('availability') === 'available')>Tersedia</option></select>
+        <select name="sort" aria-label="Urutkan buku">@foreach ($sortOptions as $value => $label)<option value="{{ $value }}" @selected($sort === $value)>{{ $label }}</option>@endforeach</select>
         <button class="button button-dark filter-submit" type="submit">Terapkan</button>
     </form>
-    <div class="catalog-heading"><span><b>{{ $books->total() }}</b> cerita menanti</span><span>Diurutkan dari yang terbaru ↘</span></div>
+    <div class="catalog-heading"><span><b>{{ $books->total() }}</b> cerita menanti</span><span>Diurutkan: {{ $sortOptions[$sort] }} ↘</span></div>
     @if ($books->isNotEmpty())
         <div class="book-grid catalog-grid">@foreach ($books as $book) @include('partials.book-card', ['book' => $book]) @endforeach</div>
         <div class="pagination-wrap">{{ $books->links() }}</div>

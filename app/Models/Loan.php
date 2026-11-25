@@ -12,7 +12,11 @@ class Loan extends Model
         'book_id',
         'member_name',
         'member_number',
+        'borrower_type',
+        'checked_out_at',
         'due_at',
+        'return_by',
+        'returned_at',
         'status',
         'method',
         'fine',
@@ -24,6 +28,9 @@ class Loan extends Model
     {
         return [
             'due_at' => 'date',
+            'checked_out_at' => 'datetime',
+            'return_by' => 'datetime',
+            'returned_at' => 'datetime',
             'fine' => 'integer',
             'renewals' => 'integer',
             'late_fee_free_days' => 'integer',

@@ -16,7 +16,7 @@
                         @if (! $book->availableCopies())
                             <form action="{{ route('reservations.store', $book) }}" method="POST">@csrf<button class="button button-outline" type="submit">Antre reservasi <span>↗</span></button></form>
                         @endif
-                        <form action="{{ route('books.wishlist', $book) }}" method="POST">@csrf<button class="button button-outline" type="submit">♡ Simpan ke daftar</button></form>
+                        <form action="{{ route('books.wishlist', $book) }}" method="POST">@csrf<button class="button button-outline wishlist-toggle {{ $isWishlisted ? 'is-wishlisted' : '' }}" type="submit" aria-pressed="{{ $isWishlisted ? 'true' : 'false' }}"><span aria-hidden="true">{{ $isWishlisted ? '♥' : '♡' }}</span><span>{{ $isWishlisted ? 'Tersimpan di daftar' : 'Simpan ke daftar' }}</span></button></form>
                     @elseif (auth()->user()->member?->status === 'blocked')
                         <span class="member-pending-note">Akses akun anggota sedang diblokir.</span>
                     @endif

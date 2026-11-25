@@ -1,16 +1,25 @@
 @extends('layouts.app')
 @section('title', 'Pengelola')
 @section('content')
-<section class="admin-page shell">
-    <div class="admin-heading"><div><span class="eyebrow">RUANG PENGELOLA</span><h1>Merawat <em>cerita.</em></h1><p>Kelola koleksi, anggota, akun, dan peminjaman.</p></div><button class="button button-dark" type="button" data-new-book>+ Tambah buku</button></div>
-    <div class="admin-stats">
+<section class="admin-page shell admin-workspace" data-dashboard-layout>
+    @include('partials.dashboard-sidebar', ['isAdminDashboard' => true, 'membership' => null, 'pendingMembership' => null])
+    <div class="admin-main">
+    <div class="dashboard-toolbar">
+        <button class="dashboard-sidebar-toggle" type="button" data-sidebar-toggle aria-controls="dashboard-sidebar" aria-expanded="true">
+            <span aria-hidden="true">☰</span><span data-sidebar-toggle-label>Ciutkan sidebar</span>
+        </button>
+    </div>
+    <div class="admin-overview" id="admin-overview" tabindex="-1">
+        <div class="admin-heading"><div><span class="eyebrow">RUANG PENGELOLA</span><h1>Merawat <em>cerita.</em></h1><p>Kelola koleksi, anggota, akun, dan peminjaman.</p></div><button class="button button-dark" type="button" data-new-book>+ Tambah buku</button></div>
+        <div class="admin-stats">
         <div><span>KOLEKSI BUKU</span><b>{{ $books->count() }}</b><small>judul di katalog</small></div>
         <div><span>PINJAMAN AKTIF</span><b>{{ $activeLoansCount }}</b><small>perlu dipantau</small></div>
         <div><span>ANGGOTA AKTIF</span><b>{{ $members->where('status', 'active')->count() }}</b><small>{{ $members->where('status', 'blocked')->count() }} diblokir</small></div>
         <div><span>TOTAL PINJAMAN</span><b>{{ $totalLoans }}</b><small>seluruh transaksi</small></div>
+        </div>
     </div>
 
-    <section class="admin-panel">
+    <section class="admin-panel" id="admin-users" tabindex="-1">
         <div class="admin-panel-head"><div><span class="eyebrow">AKUN & AKSES</span><h2>Kelola <em>pengguna.</em></h2></div><button class="button button-outline" type="button" data-new-user>+ Buat akun</button></div>
         <div class="table-wrap"><table class="admin-table">
             <thead><tr><th>NAMA & EMAIL</th><th>NOMOR ANGGOTA</th><th>PERAN</th><th>KEANGGOTAAN</th><th>AKSI</th></tr></thead>
@@ -36,7 +45,7 @@
         </table></div>
     </section>
 
-    <section class="admin-panel">
+    <section class="admin-panel" id="admin-members" tabindex="-1">
         <div class="admin-panel-head"><div><span class="eyebrow">STATUS AKSES</span><h2>Keanggotaan <em>perpustakaan.</em></h2></div><span>{{ $members->count() }} anggota</span></div>
         <div class="table-wrap"><table class="admin-table">
             <thead><tr><th>NAMA & NOMOR ANGGOTA</th><th>EMAIL</th><th>BERGABUNG</th><th>STATUS</th><th>AKSI</th></tr></thead>
@@ -60,7 +69,7 @@
         </table></div>
     </section>
 
-    <section class="admin-panel">
+    <section class="admin-panel" id="admin-memberships" tabindex="-1">
         <div class="admin-panel-head"><div><span class="eyebrow">PEMBAYARAN OTOMATIS</span><h2>Transaksi <em>membership.</em></h2></div><span>{{ $membershipRequests->count() }} menunggu</span></div>
         <div class="table-wrap"><table class="admin-table">
             <thead><tr><th>ANGGOTA</th><th>PAKET</th><th>PERIODE</th><th>TAGIHAN</th><th>ORDER ID</th><th>STATUS</th></tr></thead>
@@ -100,7 +109,7 @@
         </section>
     @endif
 
-    <section class="admin-panel">
+    <section class="admin-panel" id="admin-books" tabindex="-1">
         <div class="admin-panel-head"><div><span class="eyebrow">KOLEKSI PERPUSTAKAAN</span><h2>Semua <em>buku.</em></h2></div><span>{{ $books->count() }} koleksi</span></div>
         <div class="table-wrap"><table class="admin-table">
             <thead><tr><th>JUDUL & PENULIS</th><th>GENRE</th><th>TAHUN</th><th>STOK</th><th>LOKASI</th><th>E-BOOK</th><th>AKSI</th></tr></thead>
@@ -119,7 +128,7 @@
         </table></div>
     </section>
 
-    <section class="admin-panel">
+    <section class="admin-panel" id="admin-loan-form" tabindex="-1">
         <div class="admin-panel-head"><div><span class="eyebrow">PINDAI KARTU ANGGOTA</span><h2>Catat <em>peminjaman.</em></h2></div></div>
         <form action="{{ route('admin.loans.store') }}" method="POST" class="admin-loan-form" data-scanner-form>
             @csrf
@@ -133,14 +142,29 @@
         </form>
     </section>
 
-    <section class="admin-panel">
+    <section class="admin-panel" id="admin-guest-loan-form" tabindex="-1">
+        <div class="admin-panel-head"><div><span class="eyebrow">BACA DI TEMPAT</span><h2>Catat pinjaman <em>tamu.</em></h2></div></div>
+        <form action="{{ route('admin.guest-loans.store') }}" method="POST" class="admin-loan-form admin-guest-loan-form">
+            @csrf
+            <label>Nama tamu<input name="guest_name" required maxlength="120" autocomplete="name" placeholder="Nama pengunjung"></label>
+            <label>Buku<select name="book_id" required><option value="">Pilih buku</option>@foreach ($books as $book)<option value="{{ $book->id }}" @disabled($book->availableCopies() < 1)>{{ $book->title }} — {{ $book->availableCopies() }} tersedia</option>@endforeach</select></label>
+            <button class="button button-dark" type="submit">Catat buku keluar</button>
+            <p class="admin-form-hint">Waktu pinjam tercatat otomatis. Buku wajib kembali hari ini sebelum pukul 23.59.</p>
+        </form>
+    </section>
+
+    <section class="admin-panel" id="admin-loans" tabindex="-1">
         <div class="admin-panel-head"><div><span class="eyebrow">AKTIVITAS TERKINI</span><h2>Pinjam & <em>kembali.</em></h2></div></div>
         <div class="table-wrap"><table class="admin-table">
-            <thead><tr><th>ANGGOTA</th><th>BUKU</th><th>TENGGAT</th><th>STATUS</th><th>DENDA</th><th>AKSI</th></tr></thead>
+            <thead><tr><th>PEMINJAM</th><th>BUKU</th><th>WAKTU PINJAM</th><th>TENGGAT</th><th>WAKTU KEMBALI</th><th>STATUS</th><th>DENDA</th><th>AKSI</th></tr></thead>
             <tbody>
                 @forelse ($loans as $loan)
                     <tr>
-                        <td><b>{{ $loan->member_name }}</b><small class="table-sub">{{ $loan->member_number }}</small></td><td>{{ $loan->book->title }}</td><td>{{ $loan->due_at->translatedFormat('d M Y') }}</td>
+                        <td><b>{{ $loan->member_name }}</b><small class="table-sub">{{ $loan->borrower_type === 'guest' ? 'Tamu · baca di tempat' : $loan->member_number }}</small></td>
+                        <td>{{ $loan->book->title }}</td>
+                        <td>{{ ($loan->checked_out_at ?? $loan->created_at)->translatedFormat('d M Y H:i') }}</td>
+                        <td>{{ $loan->return_by?->translatedFormat('d M Y H:i') ?? $loan->due_at->translatedFormat('d M Y') }}</td>
+                        <td>{{ $loan->returned_at?->translatedFormat('d M Y H:i') ?? '—' }}</td>
                         <td><span class="loan-status">{{ $loan->status === 'active' ? '● Dipinjam' : '✓ Kembali' }}</span></td>
                         <td>Rp{{ number_format($loan->status === 'returned' ? $loan->fine : $loan->estimatedFine(), 0, ',', '.') }}</td>
                         <td>
@@ -152,13 +176,13 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="6" class="table-empty">Belum ada transaksi peminjaman.</td></tr>
+                    <tr><td colspan="8" class="table-empty">Belum ada transaksi peminjaman.</td></tr>
                 @endforelse
             </tbody>
         </table></div>
     </section>
 
-    <section class="admin-panel">
+    <section class="admin-panel" id="admin-inbox" tabindex="-1">
         <div class="admin-panel-head"><div><span class="eyebrow">MASUK DARI PENGUNJUNG</span><h2>Pesan & <em>usulan buku.</em></h2></div></div>
         <div class="table-wrap"><table class="admin-table">
             <thead><tr><th>NAMA</th><th>EMAIL</th><th>PESAN</th><th>DITERIMA</th></tr></thead>
@@ -172,7 +196,7 @@
         </table></div>
     </section>
 
-    <section class="admin-panel">
+    <section class="admin-panel" id="admin-reservations" tabindex="-1">
         <div class="admin-panel-head"><div><span class="eyebrow">ANTREAN PRIORITAS</span><h2>Reservasi <em>buku.</em></h2></div><span>{{ $reservations->count() }} antrean</span></div>
         <div class="table-wrap"><table class="admin-table">
             <thead><tr><th>URUTAN</th><th>BUKU</th><th>ANGGOTA</th><th>STATUS</th><th>AKSI</th></tr></thead>
@@ -197,7 +221,7 @@
         </table></div>
     </section>
 
-    <section class="admin-panel">
+    <section class="admin-panel" id="admin-book-requests" tabindex="-1">
         <div class="admin-panel-head"><div><span class="eyebrow">USULAN ANGGOTA</span><h2>Permintaan <em>buku baru.</em></h2></div><span>{{ $bookRequests->count() }} terbaru</span></div>
         <div class="table-wrap"><table class="admin-table">
             <thead><tr><th>ANGGOTA</th><th>BUKU</th><th>CATATAN</th><th>STATUS</th><th>PERBARUI</th></tr></thead>
@@ -226,9 +250,10 @@
                 @endforelse
             </tbody>
         </table></div>
+        </div>
     </section>
 
-    <section class="admin-panel">
+    <section class="admin-panel" id="admin-book-reviews" tabindex="-1">
         <div class="admin-panel-head"><div><span class="eyebrow">MODERASI PEMBACA</span><h2>Kesan dan <em>pesan.</em></h2></div><span>{{ $bookReviews->count() }} menunggu</span></div>
         <div class="table-wrap"><table class="admin-table">
             <thead><tr><th>PEMBACA</th><th>BUKU</th><th>SUASANA HATI</th><th>ULASAN</th><th>STATUS</th><th>AKSI</th></tr></thead>

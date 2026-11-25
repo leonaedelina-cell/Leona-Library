@@ -13,6 +13,7 @@
     @stack('head')
 </head>
 <body>
+    @unless (request()->routeIs('dashboard', 'admin.index', 'profile.edit'))
     <header class="site-header">
         <div class="shell nav-wrap">
             <a class="brand" href="{{ route('home') }}"><span class="brand-mark">r.</span><span>ruang<span class="brand-light">baca</span><small>PERPUSTAKAAN KOTA</small></span></a>
@@ -41,6 +42,7 @@
             @endauth
         </div>
     </header>
+    @endunless
 
     @if (session('success'))
         <div class="flash success shell" role="status">{{ session('success') }}</div>
@@ -57,6 +59,7 @@
 
     <main>@yield('content')</main>
 
+    @unless (request()->routeIs('dashboard', 'admin.index'))
     <footer class="footer">
         <div class="shell footer-main">
             <div><a class="brand footer-brand" href="{{ route('home') }}"><span class="brand-mark">r.</span><span>ruang<span class="brand-light">baca</span><small>PERPUSTAKAAN KOTA</small></span></a><p>Tempat cerita bertemu, dan jeda menemukan maknanya.</p></div>
@@ -65,6 +68,7 @@
         </div>
         <div class="shell footer-bottom"><span>© {{ date('Y') }} Ruang Baca. Tumbuh bersama cerita.</span>@auth @if (auth()->user()->isAdmin())<a href="{{ route('admin.index') }}">Panel pengelola ↗</a>@endif @else<a href="{{ route('login') }}">Masuk anggota ↗</a>@endauth</div>
     </footer>
+    @endunless
     @vite('resources/js/app.js')
     @stack('scripts')
 </body>

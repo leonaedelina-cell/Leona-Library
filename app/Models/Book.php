@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Book extends Model
@@ -41,6 +42,16 @@ class Book extends Model
     public function reviews(): HasMany
     {
         return $this->hasMany(BookReview::class);
+    }
+
+    public function views(): HasMany
+    {
+        return $this->hasMany(BookView::class);
+    }
+
+    public function favorites(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'book_favorites')->withTimestamps();
     }
 
     public function availableCopies(): int

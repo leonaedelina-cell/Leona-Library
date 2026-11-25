@@ -6,6 +6,62 @@ document.addEventListener('DOMContentLoaded', () => {
         menuToggle.setAttribute('aria-expanded', String(open));
     });
 
+    document.querySelectorAll('[data-dashboard-layout]').forEach((layout) => {
+        const sidebar = layout.querySelector('.dashboard-sidebar');
+        const toggle = layout.querySelector('[data-sidebar-toggle]');
+        if (!sidebar || !toggle) return;
+
+        const mobileQuery = window.matchMedia('(max-width: 760px)');
+        const closeButtons = layout.querySelectorAll('[data-sidebar-close]');
+        let isOpen = !mobileQuery.matches;
+        layout.classList.add('sidebar-enhanced');
+
+        const updateSidebarState = (open, restoreFocus = false) => {
+            isOpen = open;
+            const isMobile = mobileQuery.matches;
+            const label = isMobile
+                ? (isOpen ? 'Tutup menu' : 'Buka menu')
+                : (isOpen ? 'Ciutkan sidebar' : 'Buka sidebar');
+
+            layout.classList.toggle('is-sidebar-mobile', isMobile);
+            layout.classList.toggle('is-sidebar-open', isMobile && isOpen);
+            layout.classList.toggle('is-sidebar-collapsed', !isMobile && !isOpen);
+            toggle.setAttribute('aria-expanded', String(isOpen));
+            toggle.setAttribute('aria-label', label);
+            const toggleLabel = toggle.querySelector('[data-sidebar-toggle-label]');
+            if (toggleLabel) toggleLabel.textContent = label;
+            document.body.classList.toggle('dashboard-sidebar-open', isMobile && isOpen);
+
+            if (restoreFocus) {
+                if (isMobile && isOpen) sidebar.querySelector('[data-sidebar-close]')?.focus();
+                else toggle.focus();
+            }
+        };
+
+        updateSidebarState(isOpen);
+        toggle.addEventListener('click', () => updateSidebarState(!isOpen, true));
+        closeButtons.forEach((button) => {
+            button.addEventListener('click', () => updateSidebarState(false, true));
+        });
+        sidebar.querySelectorAll('a[href^="#"]').forEach((link) => {
+            link.addEventListener('click', () => {
+                if (mobileQuery.matches) updateSidebarState(false);
+            });
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && mobileQuery.matches && isOpen) {
+                updateSidebarState(false, true);
+            }
+        });
+
+        const handleViewportChange = () => updateSidebarState(!mobileQuery.matches);
+        if (typeof mobileQuery.addEventListener === 'function') {
+            mobileQuery.addEventListener('change', handleViewportChange);
+        } else {
+            mobileQuery.addListener(handleViewportChange);
+        }
+    });
+
     document.querySelectorAll('.member-qr[data-qr]').forEach((canvas) => {
         window.QRCode.toCanvas(canvas, canvas.dataset.qr, {
             errorCorrectionLevel: 'M',

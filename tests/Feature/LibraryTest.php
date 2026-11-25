@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Book;
 use App\Models\BookReview;
+use App\Models\BookView;
 use App\Models\ContactMessage;
 use App\Models\Loan;
 use App\Models\Member;
@@ -11,10 +12,12 @@ use App\Models\MembershipSubscription;
 use App\Models\Reservation;
 use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
+use Database\Seeders\TestAccountsSeeder;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
@@ -26,20 +29,109 @@ class LibraryTest extends TestCase
 
     public function test_home_and_catalog_render_seeded_books(): void
     {
+        $this->travelTo('2026-03-15 10:00:00');
         $book = $this->createBook();
 
         $this->get('/')
             ->assertOk()
             ->assertSee('Setiap halaman')
-            ->assertSee($book->title);
+            ->assertSee($book->title)
+            ->assertSee('Dipublikasi 15/03/2026');
 
         $this->get('/katalog?q=laut')
             ->assertOk()
-            ->assertSee($book->title);
+            ->assertSee($book->title)
+            ->assertSee('Dipublikasi 15/03/2026');
 
         $this->get('/katalog?q=judul-yang-tidak-ada')
             ->assertOk()
             ->assertSee('Belum ketemu ceritanya.');
+    }
+
+    public function test_catalog_can_sort_books_by_popularity_favorites_recency_and_title(): void
+    {
+        $this->travelTo('2026-01-01 10:00:00');
+        $titleFirstBook = $this->createBook([
+            'title' => 'Awal Cerita',
+            'isbn' => '9786020000001',
+        ]);
+        $this->travelTo('2026-01-01 10:01:00');
+        $favoriteBook = $this->createBook([
+            'title' => 'Cerita Favorit',
+            'isbn' => '9786020000002',
+        ]);
+        $this->travelTo('2026-01-01 10:02:00');
+        $popularBook = $this->createBook([
+            'title' => 'Malam Paling Dibaca',
+            'isbn' => '9786020000003',
+        ]);
+        $this->travelTo('2026-01-01 10:03:00');
+        $newestBook = $this->createBook([
+            'title' => 'Yang Baru',
+            'isbn' => '9786020000004',
+        ]);
+
+        $member = $this->createActiveMember();
+        $popularLoans = [
+            $this->createLoan($member, $popularBook, 'returned'),
+            $this->createLoan($member, $popularBook, 'returned'),
+            $this->createLoan($member, $popularBook, 'returned'),
+        ];
+        $favoriteLoans = [
+            $this->createLoan($member, $favoriteBook, 'returned'),
+            $this->createLoan($member, $favoriteBook, 'returned'),
+        ];
+        $favoriteUser = User::create([
+            'name' => 'Pembaca Favorit',
+            'email' => 'pembaca-favorit@example.com',
+            'password' => 'SecretPassword2026',
+            'role' => 'member',
+        ]);
+
+        $member->user->favoriteBooks()->attach([$favoriteBook->id, $popularBook->id]);
+        $favoriteUser->favoriteBooks()->attach($favoriteBook->id);
+        BookView::create([
+            'book_id' => $favoriteBook->id,
+            'user_id' => $member->user_id,
+        ]);
+        BookView::create([
+            'book_id' => $favoriteBook->id,
+            'user_id' => $favoriteUser->id,
+        ]);
+
+        foreach ([
+            [$popularLoans[0], 'hangat'],
+            [$popularLoans[1], 'merenung'],
+            [$popularLoans[2], 'terinspirasi'],
+            [$favoriteLoans[0], 'hangat'],
+            [$favoriteLoans[1], 'terinspirasi'],
+        ] as [$loan, $mood]) {
+            BookReview::create([
+                'loan_id' => $loan->id,
+                'user_id' => $member->user_id,
+                'book_id' => $loan->book_id,
+                'mood' => $mood,
+                'content' => 'Cerita ini meninggalkan kesan yang lama.',
+                'status' => 'approved',
+            ]);
+        }
+
+        $this->get(route('catalog', ['sort' => 'popular']))
+            ->assertOk()
+            ->assertSeeInOrder([$favoriteBook->title, $popularBook->title]);
+
+        $this->get(route('catalog', ['sort' => 'favorite']))
+            ->assertOk()
+            ->assertSeeInOrder([$favoriteBook->title, $popularBook->title]);
+
+        $this->get(route('catalog'))
+            ->assertOk()
+            ->assertSeeInOrder([$newestBook->title, $popularBook->title, $favoriteBook->title, $titleFirstBook->title])
+            ->assertSee('value="latest" selected', false);
+
+        $this->get(route('catalog', ['sort' => 'title']))
+            ->assertOk()
+            ->assertSeeInOrder([$titleFirstBook->title, $favoriteBook->title, $popularBook->title, $newestBook->title]);
     }
 
     public function test_guest_can_view_login_registration_and_password_recovery_pages(): void
@@ -63,7 +155,15 @@ class LibraryTest extends TestCase
         $originalDueDate = $loan->due_at->copy();
 
         $this->assertSame(now()->addDays(14)->toDateString(), $originalDueDate->toDateString());
-        $this->get(route('dashboard'))->assertOk()->assertSee($book->title);
+        $this->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee($book->title)
+            ->assertSee('Anggota aktif')
+            ->assertSee('data-sidebar-toggle', false)
+            ->assertDontSee('dashboard-hero', false)
+            ->assertSee('id="member-overview"', false)
+            ->assertDontSee('site-header', false)
+            ->assertDontSee('<footer class="footer">', false);
 
         $this->post(route('loans.renew', $loan))->assertRedirect();
         $this->assertSame($originalDueDate->addDays(7)->toDateString(), $loan->fresh()->due_at->toDateString());
@@ -92,6 +192,91 @@ class LibraryTest extends TestCase
         $this->get('/katalog?availability=available')
             ->assertOk()
             ->assertDontSee($book->title);
+    }
+
+    public function test_member_can_add_a_book_to_the_wishlist_and_see_its_active_state(): void
+    {
+        $book = $this->createBook();
+        $member = $this->createActiveMember();
+
+        $this->actingAs($member->user)
+            ->get(route('books.show', $book))
+            ->assertOk()
+            ->assertSee('aria-pressed="false"', false)
+            ->assertSee('Simpan ke daftar');
+
+        $this->post(route('books.wishlist', $book))
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('book_favorites', [
+            'book_id' => $book->id,
+            'user_id' => $member->user->id,
+        ]);
+
+        $this->get(route('books.show', $book))
+            ->assertOk()
+            ->assertSee('wishlist-toggle is-wishlisted', false)
+            ->assertSee('aria-pressed="true"', false)
+            ->assertSee('Tersimpan di daftar');
+    }
+
+    public function test_member_can_remove_a_book_from_the_wishlist(): void
+    {
+        $book = $this->createBook();
+        $member = $this->createActiveMember();
+
+        $this->actingAs($member->user)
+            ->withSession(['wishlist' => [$book->id]])
+            ->post(route('books.wishlist', $book))
+            ->assertRedirect()
+            ->assertSessionMissing('wishlist');
+
+        $this->assertDatabaseMissing('book_favorites', [
+            'book_id' => $book->id,
+            'user_id' => $member->user->id,
+        ]);
+
+        $this->get(route('books.show', $book))
+            ->assertOk()
+            ->assertSee('aria-pressed="false"', false)
+            ->assertSee('Simpan ke daftar');
+    }
+
+    public function test_book_cards_show_unique_viewer_and_favorite_counts(): void
+    {
+        $book = $this->createBook();
+        $member = $this->createActiveMember();
+        $secondUser = User::create([
+            'name' => 'Pembaca Kedua',
+            'email' => 'pembaca-kedua@example.com',
+            'password' => 'SecretPassword2026',
+            'role' => 'member',
+        ]);
+
+        $this->get(route('books.show', $book))->assertOk();
+        $this->assertDatabaseCount('book_views', 1);
+
+        $this->actingAs($member->user);
+        $this->get(route('books.show', $book))->assertOk();
+        $this->get(route('books.show', $book))->assertOk();
+        $this->post(route('books.wishlist', $book))->assertRedirect();
+
+        $this->actingAs($secondUser);
+        $this->get(route('books.show', $book))->assertOk();
+        $this->post(route('books.wishlist', $book))->assertRedirect();
+
+        $this->assertDatabaseCount('book_views', 3);
+        $this->assertDatabaseCount('book_favorites', 2);
+
+        $this->get(route('catalog'))
+            ->assertOk()
+            ->assertSee('aria-label="Dilihat oleh 3 orang"', false)
+            ->assertSee('aria-label="Disimpan oleh 2 anggota"', false);
+
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertSee('aria-label="Dilihat oleh 3 orang"', false)
+            ->assertSee('aria-label="Disimpan oleh 2 anggota"', false);
     }
 
     public function test_member_cannot_borrow_more_than_three_books_at_once(): void
@@ -421,11 +606,13 @@ class LibraryTest extends TestCase
     {
         $this->get(route('admin.index'))->assertRedirect(route('login'));
         $this->post(route('admin.books.store'))->assertRedirect(route('login'));
+        $this->post(route('admin.guest-loans.store'))->assertRedirect(route('login'));
 
         $member = $this->createActiveMember();
         $this->actingAs($member->user);
         $this->get(route('admin.index'))->assertForbidden();
         $this->post(route('admin.books.store'))->assertForbidden();
+        $this->post(route('admin.guest-loans.store'))->assertForbidden();
     }
 
     public function test_registered_member_can_log_in_view_and_update_profile_and_password(): void
@@ -439,7 +626,12 @@ class LibraryTest extends TestCase
 
         $user = User::where('email', 'sari@example.com')->firstOrFail();
         $this->assertAuthenticatedAs($user);
-        $this->get(route('profile.edit'))->assertOk()->assertSee($user->member->member_number);
+        $this->get(route('profile.edit'))
+            ->assertOk()
+            ->assertDontSee('site-header', false)
+            ->assertSee($user->member->member_number)
+            ->assertSee(route('dashboard').'#member-loans', false)
+            ->assertSee('Lihat buku yang sedang dipinjam');
         $this->post(route('logout'))->assertRedirect(route('home'));
         $this->assertGuest();
 
@@ -531,7 +723,11 @@ class LibraryTest extends TestCase
     {
         $admin = $this->createAdmin();
         $this->actingAs($admin);
-        $this->get(route('admin.index'))->assertOk();
+        $this->get(route('admin.index'))
+            ->assertOk()
+            ->assertSee('Panel admin')
+            ->assertSee('data-sidebar-toggle', false)
+            ->assertDontSee('site-header', false);
 
         $this->post(route('admin.users.store'), [
             'name' => 'Budi Santoso',
@@ -605,6 +801,174 @@ class LibraryTest extends TestCase
         ]);
     }
 
+    public function test_admin_records_guest_checkout_and_same_day_return_deadline(): void
+    {
+        $this->travelTo('2026-01-15 16:45:00');
+        $admin = $this->createAdmin();
+        $book = $this->createBook(['stock' => 1]);
+
+        $this->actingAs($admin)
+            ->post(route('admin.guest-loans.store'), [
+                'guest_name' => 'Tamu Perpustakaan',
+                'book_id' => $book->id,
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('loans', [
+            'book_id' => $book->id,
+            'member_name' => 'Tamu Perpustakaan',
+            'member_number' => null,
+            'borrower_type' => 'guest',
+            'checked_out_at' => '2026-01-15 16:45:00',
+            'due_at' => '2026-01-15 00:00:00',
+            'return_by' => '2026-01-15 23:59:59',
+            'returned_at' => null,
+            'method' => 'onsite',
+            'status' => 'active',
+        ]);
+        $this->assertSame(0, $book->fresh()->availableCopies());
+    }
+
+    public function test_admin_returning_guest_book_records_the_return_time_and_restores_availability(): void
+    {
+        $this->travelTo('2026-01-15 16:45:00');
+        $admin = $this->createAdmin();
+        $book = $this->createBook(['stock' => 1]);
+        $loan = Loan::create([
+            'book_id' => $book->id,
+            'member_name' => 'Tamu Perpustakaan',
+            'member_number' => null,
+            'borrower_type' => 'guest',
+            'checked_out_at' => now(),
+            'due_at' => today(),
+            'return_by' => today()->endOfDay(),
+            'status' => 'active',
+            'method' => 'onsite',
+        ]);
+        $this->travelTo('2026-01-15 18:20:00');
+
+        $this->actingAs($admin)
+            ->post(route('admin.loans.return', $loan))
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('loans', [
+            'id' => $loan->id,
+            'status' => 'returned',
+            'returned_at' => '2026-01-15 18:20:00',
+        ]);
+        $this->assertSame(1, $book->fresh()->availableCopies());
+    }
+
+    public function test_admin_cannot_record_a_guest_loan_when_no_copy_is_available(): void
+    {
+        $admin = $this->createAdmin();
+        $book = $this->createBook(['stock' => 1]);
+        Loan::create([
+            'book_id' => $book->id,
+            'member_name' => 'Anggota Aktif',
+            'member_number' => 'LIB-2024-0042',
+            'due_at' => today()->addDays(14),
+            'status' => 'active',
+            'method' => 'pickup',
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.index'))
+            ->post(route('admin.guest-loans.store'), [
+                'guest_name' => 'Tamu Perpustakaan',
+                'book_id' => $book->id,
+            ])
+            ->assertRedirect(route('admin.index'))
+            ->assertSessionHasErrors('guest_loan');
+
+        $this->assertDatabaseCount('loans', 1);
+    }
+
+    public function test_guest_loan_requires_a_name_and_existing_book(): void
+    {
+        $admin = $this->createAdmin();
+
+        $this->actingAs($admin)
+            ->from(route('admin.index'))
+            ->post(route('admin.guest-loans.store'))
+            ->assertRedirect(route('admin.index'))
+            ->assertSessionHasErrors(['guest_name', 'book_id']);
+
+        $this->assertDatabaseCount('loans', 0);
+    }
+
+    public function test_guest_loan_does_not_bypass_a_member_reservation(): void
+    {
+        $admin = $this->createAdmin();
+        $member = $this->createActiveMember();
+        $book = $this->createBook(['stock' => 1]);
+        $reservation = Reservation::create([
+            'user_id' => $member->user_id,
+            'book_id' => $book->id,
+            'priority' => 0,
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.index'))
+            ->post(route('admin.guest-loans.store'), [
+                'guest_name' => 'Tamu Perpustakaan',
+                'book_id' => $book->id,
+            ])
+            ->assertRedirect(route('admin.index'))
+            ->assertSessionHasErrors('guest_loan');
+
+        $this->assertSame('ready', $reservation->fresh()->status);
+        $this->assertDatabaseCount('loans', 0);
+    }
+
+    public function test_admin_and_member_dashboards_use_the_sidebar_without_public_navigation(): void
+    {
+        $admin = $this->createAdmin();
+
+        $this->actingAs($admin)
+            ->get(route('admin.index'))
+            ->assertOk()
+            ->assertSee('data-dashboard-layout', false)
+            ->assertSee('Catat pinjaman tamu')
+            ->assertSee('WAKTU KEMBALI')
+            ->assertDontSee('site-header', false)
+            ->assertDontSee('<footer class="footer">', false);
+
+        $this->get(route('dashboard'))->assertRedirect(route('admin.index'));
+    }
+
+    public function test_basic_and_premium_dashboards_show_their_tier_without_public_navigation(): void
+    {
+        foreach (['basic', 'premium'] as $index => $plan) {
+            $user = User::create([
+                'name' => ucfirst($plan).' Reader',
+                'email' => $plan.'-reader@example.com',
+                'password' => 'SecretPassword2026',
+                'role' => 'member',
+            ]);
+            $member = Member::create([
+                'user_id' => $user->id,
+                'member_number' => 'LIB-2026-000'.($index + 1),
+                'name' => $user->name,
+                'email' => $user->email,
+                'status' => 'active',
+                'joined_at' => today(),
+            ]);
+            $this->createMembership($member->user, $plan);
+
+            $this->actingAs($member->user)
+                ->get(route('dashboard'))
+                ->assertOk()
+                ->assertSee(ucfirst($plan).' aktif')
+                ->assertSee('id="dashboard-sidebar"', false)
+                ->assertDontSee('site-header', false)
+                ->assertDontSee('<footer class="footer">', false);
+        }
+    }
+
     public function test_uploaded_ebook_requires_a_premium_membership_and_non_blocked_member(): void
     {
         Storage::fake('local');
@@ -651,6 +1015,10 @@ class LibraryTest extends TestCase
         $book = Book::where('isbn', 'DEMO-READER-2026')->firstOrFail();
         $demoUser = User::where('email', 'alya@ruangbaca.id')->firstOrFail();
 
+        $this->assertDatabaseHas('users', [
+            'email' => 'admin1@ruangbaca.test',
+            'role' => 'admin',
+        ]);
         $this->assertDatabaseHas('books', [
             'id' => $book->id,
             'ebook' => true,
@@ -659,11 +1027,83 @@ class LibraryTest extends TestCase
         Storage::disk('local')->assertExists($book->ebook_path);
         $this->assertSame('premium', $demoUser->currentMembership()?->plan);
 
+        $originalEbooks = Book::where('isbn', 'like', 'DEMO-ORIGINAL-2026-%')->get();
+        $this->assertCount(10, $originalEbooks);
+        $this->assertCount(10, $originalEbooks->pluck('ebook_path')->unique());
+
+        foreach ($originalEbooks as $originalEbook) {
+            $this->assertTrue($originalEbook->ebook);
+            Storage::disk('local')->assertExists($originalEbook->ebook_path);
+        }
+
         $this->actingAs($demoUser)
             ->get(route('books.ebook', $book))
             ->assertOk()
             ->assertSee($book->title)
             ->assertSee($demoUser->email);
+
+        $this->get(route('books.ebook', $originalEbooks->firstOrFail()))
+            ->assertOk()
+            ->assertSee($originalEbooks->firstOrFail()->title)
+            ->assertSee(route('books.ebook.file', $originalEbooks->firstOrFail()), false);
+
+        $this->get(route('books.ebook.file', $originalEbooks->firstOrFail()))
+            ->assertOk()
+            ->assertHeader('content-type', 'application/pdf');
+    }
+
+    public function test_sample_account_seeder_creates_three_accounts_per_type_idempotently(): void
+    {
+        $this->seed(TestAccountsSeeder::class);
+        $this->seed(TestAccountsSeeder::class);
+
+        $adminEmails = [
+            'admin1@ruangbaca.test',
+            'admin2@ruangbaca.test',
+            'admin3@ruangbaca.test',
+        ];
+        $basicEmails = [
+            'basic1@ruangbaca.test',
+            'basic2@ruangbaca.test',
+            'basic3@ruangbaca.test',
+        ];
+        $premiumEmails = [
+            'alya@ruangbaca.id',
+            'premium2@ruangbaca.test',
+            'premium3@ruangbaca.test',
+        ];
+        $sampleEmails = [...$adminEmails, ...$basicEmails, ...$premiumEmails];
+
+        $this->assertSame(3, User::whereIn('email', $adminEmails)->where('role', 'admin')->count());
+        $this->assertSame(3, User::whereIn('email', $basicEmails)->where('role', 'member')->count());
+        $this->assertSame(3, User::whereIn('email', $premiumEmails)->where('role', 'member')->count());
+        $this->assertSame(6, Member::whereIn('email', [...$basicEmails, ...$premiumEmails])->where('status', 'active')->count());
+        $this->assertSame(0, MembershipSubscription::whereIn('user_id', User::whereIn('email', $basicEmails)->select('id'))->count());
+        $this->assertSame(3, MembershipSubscription::whereIn('payment_order_id', [
+            'DEMO-READER-PREMIUM',
+            'SAMPLE-PREMIUM-2',
+            'SAMPLE-PREMIUM-3',
+        ])->where('status', 'active')->count());
+
+        $premiumUsers = User::whereIn('email', $premiumEmails)->get();
+        $this->assertSame(3, $premiumUsers->filter(
+            fn (User $user): bool => $user->currentMembership()?->plan === 'premium',
+        )->count());
+
+        $sampleUsers = User::whereIn('email', $sampleEmails)->get();
+        $this->assertSame(9, $sampleUsers->filter(
+            fn (User $user): bool => Hash::check('RuangBaca2026!', $user->password),
+        )->count());
+    }
+
+    public function test_sample_account_seeder_refuses_to_run_outside_local_or_testing(): void
+    {
+        $this->app->detectEnvironment(fn (): string => 'production');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Sample accounts can only be seeded in local or testing environments.');
+
+        (new TestAccountsSeeder)->run();
     }
 
     public function test_member_can_start_midtrans_checkout_but_only_paid_notification_activates_membership(): void
@@ -883,7 +1323,7 @@ class LibraryTest extends TestCase
         ]);
     }
 
-    public function test_active_membership_tier_is_shown_by_the_profile_link_only_while_active(): void
+    public function test_active_membership_tier_is_shown_in_the_dashboard_sidebar_only_while_active(): void
     {
         $member = $this->createActiveMember();
         $membership = $this->createMembership($member->user, 'premium');
@@ -892,12 +1332,14 @@ class LibraryTest extends TestCase
         $this->get(route('dashboard'))
             ->assertOk()
             ->assertSee('data-membership-tier="premium"', false)
-            ->assertSee('✦ Premium');
+            ->assertSee('Premium aktif')
+            ->assertDontSee('site-header', false);
 
         $membership->update(['ends_at' => today()->subDay()]);
 
         $this->get(route('dashboard'))
             ->assertOk()
+            ->assertSee('Anggota aktif')
             ->assertDontSee('data-membership-tier', false);
     }
 

@@ -252,6 +252,7 @@ class AdminController extends Controller
             $plan = $membership ? config('membership.plans.'.$membership->plan) : null;
             $loanLimit = $plan['loan_limit'] ?? 3;
             $loanDays = $plan['loan_days'] ?? 14;
+            $dueDate = today()->addDays($loanDays);
 
             if ($member->loans()->where('status', 'active')->count() >= $loanLimit) {
                 return 'Batas peminjaman adalah '.$loanLimit.' buku aktif untuk paket anggota.';
@@ -261,7 +262,10 @@ class AdminController extends Controller
                 'book_id' => $book->id,
                 'member_name' => $member->name,
                 'member_number' => $member->member_number,
-                'due_at' => today()->addDays($loanDays),
+                'borrower_type' => 'member',
+                'checked_out_at' => now(),
+                'due_at' => $dueDate,
+                'return_by' => $dueDate->copy()->endOfDay(),
                 'status' => 'active',
                 'method' => $data['method'],
                 'late_fee_free_days' => $membership?->billing_period === 'yearly' ? 3 : 0,
@@ -279,6 +283,47 @@ class AdminController extends Controller
             : back()->with('success', 'Peminjaman anggota berhasil dicatat.');
     }
 
+    public function storeGuestLoan(Request $request, ReservationQueue $reservationQueue): RedirectResponse
+    {
+        $data = $request->validate([
+            'guest_name' => ['required', 'string', 'max:120'],
+            'book_id' => ['required', 'integer', 'exists:books,id'],
+        ]);
+
+        $message = DB::transaction(function () use ($data, $reservationQueue): ?string {
+            $book = Book::query()->lockForUpdate()->findOrFail($data['book_id']);
+
+            if ($book->availableCopies() < 1) {
+                return 'Tidak ada eksemplar tersedia untuk buku ini.';
+            }
+
+            if (! $reservationQueue->mayBorrow(null, $book)) {
+                return 'Buku sedang disiapkan untuk anggota yang menunggu dalam antrean reservasi.';
+            }
+
+            $checkedOutAt = now();
+            $returnBy = $checkedOutAt->copy()->endOfDay();
+
+            Loan::create([
+                'book_id' => $book->id,
+                'member_name' => $data['guest_name'],
+                'member_number' => null,
+                'borrower_type' => 'guest',
+                'checked_out_at' => $checkedOutAt,
+                'due_at' => $returnBy->toDateString(),
+                'return_by' => $returnBy,
+                'status' => 'active',
+                'method' => 'onsite',
+            ]);
+
+            return null;
+        });
+
+        return $message
+            ? back()->withErrors(['guest_loan' => $message])
+            : back()->with('success', 'Peminjaman tamu berhasil dicatat. Buku harus dikembalikan hari ini sebelum pukul 23.59.');
+    }
+
     public function returnBook(Loan $loan, ReservationQueue $reservationQueue): RedirectResponse
     {
         if ($loan->status !== 'active') {
@@ -289,7 +334,7 @@ class AdminController extends Controller
         $fineAmount = $loan->estimatedFine();
 
         DB::transaction(function () use ($loan, $fineAmount, $reservationQueue): void {
-            $loan->update(['status' => 'returned', 'fine' => $fineAmount]);
+            $loan->update(['status' => 'returned', 'fine' => $fineAmount, 'returned_at' => now()]);
             $reservationQueue->prepare($loan->book);
         });
 

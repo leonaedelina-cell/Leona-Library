@@ -1,10 +1,16 @@
 @extends('layouts.app')
 @section('title', 'Ruang bacaku')
 @section('content')
-<section class="dashboard-hero"><div class="shell dashboard-welcome"><div><span class="eyebrow">SELAMAT DATANG KEMBALI, {{ strtoupper($member?->name ?? auth()->user()->name) }} ✿</span><h1>Ruang kecilmu<br>untuk <em>cerita besar.</em></h1><p>Semoga ada cerita yang membuat harimu sedikit lebih hangat.</p></div>@if ($member)<div class="member-pass"><span>RUANG BACA <i>✳</i></span><b>{{ $member->name }}</b><small>ANGGOTA SEJAK {{ $member->joined_at->translatedFormat('F Y') }}</small><div class="member-code"><strong>{{ $member->member_number }}</strong><canvas class="member-qr" data-qr="{{ $member->member_number }}" aria-label="QR kartu anggota"></canvas></div><span class="member-status {{ $member->status }}">{{ $member->status === 'blocked' ? 'Keanggotaan diblokir' : 'Anggota aktif' }}</span></div>@endif</div></section>
 @if ($member && $member->status === 'blocked')<div class="shell member-notice blocked-notice">Keanggotaan sedang diblokir. Silakan hubungi petugas untuk informasi lebih lanjut.</div>@endif
-<section class="shell dashboard-content">
-    <div class="membership-dashboard-card">
+<div class="shell dashboard-workspace" data-dashboard-layout id="member-overview">
+    @include('partials.dashboard-sidebar', ['isAdminDashboard' => false, 'membership' => $membership, 'pendingMembership' => $pendingMembership])
+    <section class="dashboard-content">
+    <div class="dashboard-toolbar">
+        <button class="dashboard-sidebar-toggle" type="button" data-sidebar-toggle aria-controls="dashboard-sidebar" aria-expanded="true">
+            <span aria-hidden="true">☰</span><span data-sidebar-toggle-label>Ciutkan sidebar</span>
+        </button>
+    </div>
+    <div class="membership-dashboard-card" id="member-membership" tabindex="-1">
         <div>
             <span class="eyebrow">PAKET MEMBACA</span>
             @if ($membership)
@@ -29,16 +35,16 @@
     @elseif ($membership?->merchandise_status === 'fulfilled')
         <p class="membership-notice">Merchandise tahunan sudah diserahkan. Terima kasih sudah menjadi bagian dari Ruang Baca!</p>
     @endif
-    <div class="dashboard-section-head"><div><span class="eyebrow">CERITA YANG SEDANG MENEMANIMU</span><h2>Sedang <em>dibaca.</em></h2></div><a class="text-link" href="{{ route('catalog') }}">Cari bacaan baru ↗</a></div>
+    <div class="dashboard-section-head" id="member-loans" tabindex="-1"><div><span class="eyebrow">CERITA YANG SEDANG MENEMANIMU</span><h2>Sedang <em>dibaca.</em></h2></div><a class="text-link" href="{{ route('catalog') }}">Cari bacaan baru ↗</a></div>
     @php($activeLoans = $loans->where('status', 'active'))
     @if ($activeLoans->isNotEmpty())
         <div class="loan-list">@foreach ($activeLoans as $loan)<article class="loan-card"><img src="{{ $loan->book->cover }}" alt="Sampul {{ $loan->book->title }}"><div class="loan-info"><span class="book-genre">{{ $loan->book->genre }}</span><h3>{{ $loan->book->title }}</h3><p>{{ $loan->book->author }}</p><div class="loan-due"><span>↩ Kembalikan sebelum</span><b>{{ $loan->due_at->translatedFormat('d F Y') }}</b></div></div><div class="loan-actions"><span class="loan-status">● Sedang dipinjam</span><form action="{{ route('loans.renew', $loan) }}" method="POST">@csrf<button class="button button-outline" type="submit">Perpanjang 7 hari ↗</button></form></div></article>@endforeach</div>
     @else
         <div class="empty-state dashboard-empty"><span>✿</span><h2>Belum ada cerita yang dibawa pulang.</h2><p>Rak kami punya banyak teman baru untukmu.</p><a class="button button-dark" href="{{ route('catalog') }}">Jelajahi katalog <span>↗</span></a></div>
     @endif
-    <div class="dashboard-section-head history-heading"><div><span class="eyebrow">DISIMPAN UNTUK NANTI</span><h2>Daftar <em>bacaanmu.</em></h2></div></div>
+    <div class="dashboard-section-head history-heading" id="member-wishlist" tabindex="-1"><div><span class="eyebrow">DISIMPAN UNTUK NANTI</span><h2>Daftar <em>bacaanmu.</em></h2></div></div>
     @if ($wishlist->isNotEmpty())<div class="book-grid wishlist-grid">@foreach ($wishlist as $book) @include('partials.book-card', ['book' => $book]) @endforeach</div>@else<p class="muted-copy wishlist-empty">Buku yang kamu simpan akan tinggal di sini. <a href="{{ route('catalog') }}">Mari lihat raknya ↗</a></p>@endif
-    <div class="dashboard-section-head history-heading"><div><span class="eyebrow">USULAN UNTUK PERPUSTAKAAN</span><h2>Buku yang ingin <em>kamu baca.</em></h2></div></div>
+    <div class="dashboard-section-head history-heading" id="member-requests" tabindex="-1"><div><span class="eyebrow">USULAN UNTUK PERPUSTAKAAN</span><h2>Buku yang ingin <em>kamu baca.</em></h2></div></div>
     @if ($member && $member->status !== 'blocked' && $membership?->billing_period === 'yearly')
         <form action="{{ route('book-requests.store') }}" method="POST" class="book-request-form">
             @csrf
@@ -65,7 +71,7 @@
             @endforeach
         </div>
     @endif
-    <div class="dashboard-section-head history-heading"><div><span class="eyebrow">JEJAK CERITA</span><h2>Riwayat <em>pinjaman.</em></h2></div></div>
+    <div class="dashboard-section-head history-heading" id="member-history" tabindex="-1"><div><span class="eyebrow">JEJAK CERITA</span><h2>Riwayat <em>pinjaman.</em></h2></div></div>
     @php($pastLoans = $loans->where('status', 'returned'))
     @if ($pastLoans->isNotEmpty())<div class="history-list">@foreach ($pastLoans as $loan)<div><span>✓</span><b>{{ $loan->book->title }}</b><span>{{ $loan->created_at->translatedFormat('d M Y') }}</span><small>Selesai dibaca</small></div>@endforeach</div>@else<p class="muted-copy">Cerita yang telah kamu kembalikan akan muncul di sini.</p>@endif
     @php($reviewableLoans = $pastLoans->filter(fn ($loan) => filled($loan->book->ebook_path)))
@@ -106,5 +112,6 @@
             @endforeach
         </div>
     @endif
-</section>
+    </section>
+</div>
 @endsection

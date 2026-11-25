@@ -59,6 +59,7 @@ Route::middleware('auth')->group(function () {
         Route::put('/buku/{book}', [AdminController::class, 'updateBook'])->name('books.update');
         Route::delete('/buku/{book}', [AdminController::class, 'deleteBook'])->name('books.delete');
         Route::post('/peminjaman', [AdminController::class, 'storeLoan'])->name('loans.store');
+        Route::post('/peminjaman/tamu', [AdminController::class, 'storeGuestLoan'])->name('guest-loans.store');
         Route::post('/peminjaman/{loan}/kembali', [AdminController::class, 'returnBook'])->name('loans.return');
         Route::post('/membership/{membership}/merchandise', [AdminController::class, 'fulfillMembershipMerchandise'])->name('memberships.merchandise');
         Route::put('/usulan-buku/{bookRequest}', [AdminController::class, 'updateBookRequest'])->name('book-requests.update');
